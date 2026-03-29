@@ -1,0 +1,214 @@
+"""
+Indian Tax Calculation Engine — FY 2024-25
+Handles both Old and New Tax Regimes with full deduction logic.
+This is deterministic math — Claude handles explanation, this handles numbers.
+"""
+
+
+# ── Tax Slabs ─────────────────────────────────────────────────────────────────
+
+OLD_SLABS = {
+    "below_60": [
+        (250000, 0.0),
+        (500000, 0.05),
+        (1000000, 0.20),
+        (float("inf"), 0.30),
+    ],
+    "60_to_80": [
+        (300000, 0.0),
+        (500000, 0.05),
+        (1000000, 0.20),
+        (float("inf"), 0.30),
+    ],
+    "above_80": [
+        (500000, 0.0),
+        (1000000, 0.20),
+        (float("inf"), 0.30),
+    ],
+}
+
+NEW_SLABS = [
+    (300000,  0.0),
+    (600000,  0.05),
+    (900000,  0.10),
+    (1200000, 0.15),
+    (1500000, 0.20),
+    (float("inf"), 0.30),
+]
+
+CESS_RATE       = 0.04
+SURCHARGE_RATES = [(5000000, 0.10), (10000000, 0.15), (20000000, 0.25), (float("inf"), 0.37)]
+
+
+def _slab_tax(income: float, slabs: list) -> float:
+    """Compute tax from slab table."""
+    tax = 0.0
+    prev = 0.0
+    for limit, rate in slabs:
+        if income <= prev:
+            break
+        taxable_in_slab = min(income, limit) - prev
+        tax += taxable_in_slab * rate
+        prev = limit
+    return tax
+
+
+def _surcharge(tax: float, income: float) -> float:
+    prev = 0.0
+    for limit, rate in SURCHARGE_RATES:
+        if income <= prev:
+            break
+        if income <= limit:
+            return tax * rate
+        prev = limit
+    return 0.0
+
+
+def compute_tax(taxable_income: float, age_group: str, regime: str) -> dict:
+    """Returns tax, surcharge, cess, total."""
+    taxable_income = max(0, taxable_income)
+
+    if regime == "old":
+        slabs = OLD_SLABS.get(age_group, OLD_SLABS["below_60"])
+        base_tax = _slab_tax(taxable_income, slabs)
+        # Section 87A rebate: if taxable income ≤ 5L, tax = 0
+        if taxable_income <= 500000:
+            base_tax = 0.0
+    else:
+        base_tax = _slab_tax(taxable_income, NEW_SLABS)
+        # New regime 87A rebate: if taxable income ≤ 7L, tax = 0
+        if taxable_income <= 700000:
+            base_tax = 0.0
+
+    surcharge = _surcharge(base_tax, taxable_income)
+    tax_with_sc = base_tax + surcharge
+    cess = tax_with_sc * CESS_RATE
+    total = tax_with_sc + cess
+
+    return {
+        "base_tax":   round(base_tax, 2),
+        "surcharge":  round(surcharge, 2),
+        "cess":       round(cess, 2),
+        "total_tax":  round(total, 2),
+    }
+
+
+# ── Deduction Calculator ──────────────────────────────────────────────────────
+
+def compute_deductions(req) -> dict:
+    """
+    Compute all applicable deductions for old regime.
+    Returns dict of {section: amount_applied} and missed opportunities.
+    """
+    used    = {}
+    missed  = {}
+
+    # Standard Deduction (salaried / pensioners)
+    if req.employment_type in ("salaried",):
+        used["Standard Deduction (16IA)"] = 50000
+
+    # Section 80C
+    MAX_80C = 150000
+    remaining_80c = max(0, MAX_80C - req.existing_80c)
+    used["80C (EPF/PPF/ELSS/LIC)"] = min(req.existing_80c, MAX_80C)
+    if remaining_80c > 0:
+        missed["80C headroom remaining"] = {
+            "amount": remaining_80c,
+            "max": MAX_80C,
+            "tip": f"You can invest ₹{remaining_80c:,.0f} more in ELSS/PPF/LIC to save ₹{remaining_80c*0.30:,.0f} in taxes"
+        }
+
+    # Section 80D — health insurance
+    MAX_80D = 25000 if req.age_group == "below_60" else 50000
+    used["80D (Health Insurance)"] = min(req.existing_80d, MAX_80D)
+    if req.existing_80d < MAX_80D:
+        gap = MAX_80D - req.existing_80d
+        missed["80D headroom remaining"] = {
+            "amount": gap,
+            "max": MAX_80D,
+            "tip": f"Buy health insurance for ₹{gap:,.0f} more premium to save ₹{gap*0.30:,.0f}"
+        }
+
+    # HRA Exemption
+    if req.hra_received > 0 and req.hra_rent_paid > 0:
+        basic_estimate = req.annual_income * 0.40  # rough: basic ~40% of CTC
+        hra_calc = min(
+            req.hra_received,
+            req.hra_rent_paid - (0.10 * basic_estimate),
+            basic_estimate * (0.50 if req.hra_metro_city else 0.40)
+        )
+        used["HRA Exemption (10(13A))"] = max(0, hra_calc)
+
+    # Section 24 — home loan interest
+    MAX_24 = 200000
+    if req.home_loan_interest > 0:
+        used["Home Loan Interest (24B)"] = min(req.home_loan_interest, MAX_24)
+
+    # NPS — 80CCD(1B)
+    MAX_NPS = 50000
+    if req.nps_contribution > 0:
+        used["NPS 80CCD(1B)"] = min(req.nps_contribution, MAX_NPS)
+    else:
+        missed["NPS 80CCD(1B)"] = {
+            "amount": MAX_NPS,
+            "max": MAX_NPS,
+            "tip": f"Open NPS account: additional ₹50,000 deduction saves up to ₹15,600/year"
+        }
+
+    # Other deductions
+    if req.other_deductions > 0:
+        used["Other Deductions"] = req.other_deductions
+
+    total = sum(used.values())
+    return {"used": used, "missed": missed, "total": total}
+
+
+def full_tax_analysis(req) -> dict:
+    """
+    Master function: returns old regime, new regime, recommendation.
+    """
+    deductions = compute_deductions(req)
+    total_deductions = deductions["total"]
+
+    # Old Regime
+    old_taxable = max(0, req.annual_income - total_deductions)
+    old_tax     = compute_tax(old_taxable, req.age_group, "old")
+
+    old_summary = {
+        "regime":           "Old Regime",
+        "gross_income":     req.annual_income,
+        "total_deductions": total_deductions,
+        "taxable_income":   old_taxable,
+        "tax_before_cess":  old_tax["base_tax"] + old_tax["surcharge"],
+        "cess":             old_tax["cess"],
+        "total_tax":        old_tax["total_tax"],
+        "effective_rate":   round(old_tax["total_tax"] / req.annual_income * 100, 2),
+    }
+
+    # New Regime — only standard deduction applies
+    new_std_deduction = 75000  # Updated budget 2024
+    new_taxable = max(0, req.annual_income - new_std_deduction)
+    new_tax     = compute_tax(new_taxable, req.age_group, "new")
+
+    new_summary = {
+        "regime":           "New Regime",
+        "gross_income":     req.annual_income,
+        "total_deductions": new_std_deduction,
+        "taxable_income":   new_taxable,
+        "tax_before_cess":  new_tax["base_tax"] + new_tax["surcharge"],
+        "cess":             new_tax["cess"],
+        "total_tax":        new_tax["total_tax"],
+        "effective_rate":   round(new_tax["total_tax"] / req.annual_income * 100, 2),
+    }
+
+    recommended = "old" if old_summary["total_tax"] <= new_summary["total_tax"] else "new"
+    savings = abs(old_summary["total_tax"] - new_summary["total_tax"])
+
+    return {
+        "old_regime":         old_summary,
+        "new_regime":         new_summary,
+        "recommended":        recommended,
+        "savings":            round(savings, 2),
+        "deductions_used":    deductions["used"],
+        "deductions_missed":  deductions["missed"],
+    }
