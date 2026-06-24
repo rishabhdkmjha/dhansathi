@@ -78,10 +78,11 @@ export default function ChatPage() {
         suggested_tools: res.suggested_tools,
       }])
     } catch (e) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: '⚠ Something went wrong. Make sure the DhanSathi backend is running on localhost:8000.',
-      }])
+  setMessages(prev => [...prev, {
+    role: 'assistant',
+    content: `⚠ Something went wrong. ${e.message}`,
+  }])
+}
     } finally {
       setLoading(false)
     }
