@@ -1,5 +1,13 @@
 {
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/_/backend/$1" }
-  ]
+  "experimentalServices": {
+    "frontend": {
+      "root": "frontend",
+      "routePrefix": "/",
+      "framework": "vite"
+    },
+    "backend": {
+      "root": "backend",
+      "routePrefix": "/_/backend"
+    }
+  }
 }
