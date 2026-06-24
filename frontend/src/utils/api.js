@@ -1,4 +1,4 @@
-const BASE = '/api/v1'
+const BASE = '/_/backend'
 
 async function post(path, body) {
   const res = await fetch(`${BASE}${path}`, {
