@@ -80,6 +80,8 @@ Create a file called `.env` inside the `backend` folder:
 GROQ_API_KEY=your_api_key_here
 ```
 
+> ⚠️ **Never commit `.env` to GitHub.** It's already listed in `.gitignore` — keep it that way. Each person running this project needs their own free key from [console.groq.com](https://console.groq.com) in their own local `.env`.
+
 ### 4. Run Backend
 ```bash
 python main.py
@@ -97,6 +99,22 @@ npm run dev
 
 ### 6. Open the app
 Go to **http://localhost:5173**
+
+---
+
+## Deployment (Vercel)
+
+This repo's `vercel.json` deploys both the frontend (Vite) and backend (FastAPI) as a single Vercel project, with `/api/v1/*` routed to the backend.
+
+1. Import the repo into [Vercel](https://vercel.com/new)
+2. Go to **Settings → Environment Variables** on the Vercel project
+3. Add:
+   - **Key:** `GROQ_API_KEY`
+   - **Value:** your Groq API key
+   - **Environment:** Production (and Preview/Development if needed)
+4. Redeploy — environment variable changes only apply to deployments triggered after they're saved
+
+Same rule as local dev applies: the key lives only in Vercel's dashboard, never in the repo.
 
 ---
 
