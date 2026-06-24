@@ -77,12 +77,11 @@ export default function ChatPage() {
         role: 'assistant', content: res.reply,
         suggested_tools: res.suggested_tools,
       }])
-    } catch (e) {
-  setMessages(prev => [...prev, {
-    role: 'assistant',
-    content: `⚠ Something went wrong. ${e.message}`,
-  }])
-}
+   } catch (e) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `⚠ Something went wrong. ${e.message}`,
+      }])
     } finally {
       setLoading(false)
     }
