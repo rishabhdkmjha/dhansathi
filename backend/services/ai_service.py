@@ -13,7 +13,7 @@ load_dotenv()
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
-API_KEY = "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".strip()
+API_KEY = "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".strip()
 
 HEADERS = {
     "Content-Type":  "application/json",
