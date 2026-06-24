@@ -17,9 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(tax.router,        prefix="/api/v1", tags=["Tax Advisor"])
-app.include_router(investment.router, prefix="/api/v1", tags=["Investment Advisor"])
-app.include_router(chat.router,       prefix="/api/v1", tags=["Chat"])
+app.include_router(tax.router,        prefix="", tags=["Tax Advisor"])
+app.include_router(investment.router, prefix="", tags=["Investment Advisor"])
+app.include_router(chat.router,       prefix="", tags=["Chat"])
 
 @app.get("/")
 def root():
