@@ -13,7 +13,12 @@ load_dotenv()
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL   = "llama-3.3-70b-versatile"
-API_KEY = "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".strip()
+API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+
+if not API_KEY:
+    raise RuntimeError(
+        "GROQ_API_KEY is not set. Add it to backend/.env as GROQ_API_KEY=your_key_here"
+    )
 
 HEADERS = {
     "Content-Type":  "application/json",
@@ -36,6 +41,11 @@ async def call_claude(system_prompt: str, user_message: str, max_tokens: int = 1
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"]
+
+
+# Alias so routers/* (which import get_ai_json) keep working.
+async def get_ai_json(system_prompt: str, user_message: str, max_tokens: int = 2000) -> dict:
+    return await call_claude_json(system_prompt, user_message, max_tokens)
 
 
 async def call_claude_json(system_prompt: str, user_message: str, max_tokens: int = 2000) -> dict:
@@ -64,3 +74,8 @@ async def call_claude_chat(messages: list, system_prompt: str, max_tokens: int =
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"]
+
+
+# Alias so routers/chat.py (which imports get_ai_chat) keeps working.
+async def get_ai_chat(messages: list, system_prompt: str, max_tokens: int = 1000) -> str:
+    return await call_claude_chat(messages, system_prompt, max_tokens)
